@@ -26,7 +26,14 @@ importers:
 
   packages/api: {}
 
-  packages/catalog: {}
+  packages/catalog:
+    dependencies:
+      '@shopify-agent-channel/db':
+        specifier: workspace:*
+        version: link:../db
+      drizzle-orm:
+        specifier: ^0.45.1
+        version: 0.45.1(@neondatabase/serverless@1.0.2)(@types/pg@8.16.0)
 
   packages/db:
     dependencies:

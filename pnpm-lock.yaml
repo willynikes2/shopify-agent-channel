@@ -53,7 +53,20 @@ importers:
 
   packages/edge-worker: {}
 
-  packages/exec: {}
+  packages/exec:
+    dependencies:
+      '@shopify-agent-channel/catalog':
+        specifier: workspace:*
+        version: link:../catalog
+      '@shopify-agent-channel/db':
+        specifier: workspace:*
+        version: link:../db
+      '@shopify-agent-channel/shopify-auth':
+        specifier: workspace:*
+        version: link:../shopify-auth
+      drizzle-orm:
+        specifier: ^0.45.1
+        version: 0.45.1(@neondatabase/serverless@1.0.2)(@types/pg@8.16.0)
 
   packages/ingest:
     dependencies:

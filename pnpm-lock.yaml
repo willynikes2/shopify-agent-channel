@@ -76,7 +76,35 @@ importers:
         specifier: ^0.8.3
         version: 0.8.3(drizzle-orm@0.45.1(@neondatabase/serverless@1.0.2)(@types/pg@8.16.0))(zod@4.3.6)
 
-  packages/edge-worker: {}
+  packages/edge-worker:
+    dependencies:
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.27.1
+        version: 1.27.1(zod@4.3.6)
+      '@shopify-agent-channel/api':
+        specifier: workspace:*
+        version: link:../api
+      '@shopify-agent-channel/catalog':
+        specifier: workspace:*
+        version: link:../catalog
+      '@shopify-agent-channel/db':
+        specifier: workspace:*
+        version: link:../db
+      '@shopify-agent-channel/exec':
+        specifier: workspace:*
+        version: link:../exec
+      '@shopify-agent-channel/manifest':
+        specifier: workspace:*
+        version: link:../manifest
+      '@shopify-agent-channel/mcp-server':
+        specifier: workspace:*
+        version: link:../mcp-server
+      drizzle-orm:
+        specifier: ^0.45.1
+        version: 0.45.1(@neondatabase/serverless@1.0.2)(@types/pg@8.16.0)
+      hono:
+        specifier: ^4.0.0
+        version: 4.12.3
 
   packages/exec:
     dependencies:

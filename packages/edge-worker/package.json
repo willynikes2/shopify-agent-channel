@@ -5,8 +5,20 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "dependencies": {
+    "hono": "^4.0.0",
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "@shopify-agent-channel/api": "workspace:*",
+    "@shopify-agent-channel/db": "workspace:*",
+    "@shopify-agent-channel/exec": "workspace:*",
+    "@shopify-agent-channel/catalog": "workspace:*",
+    "@shopify-agent-channel/manifest": "workspace:*",
+    "@shopify-agent-channel/mcp-server": "workspace:*",
+    "drizzle-orm": "^0.45.1"
+  },
   "scripts": {
     "build": "tsc",
+    "dev": "wrangler dev",
     "test": "vitest run",
     "lint": "eslint src"
   }

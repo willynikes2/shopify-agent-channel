@@ -24,7 +24,32 @@ importers:
         specifier: ^1.6.0
         version: 1.6.1(@types/node@20.19.35)
 
-  packages/api: {}
+  packages/api:
+    dependencies:
+      '@shopify-agent-channel/catalog':
+        specifier: workspace:*
+        version: link:../catalog
+      '@shopify-agent-channel/db':
+        specifier: workspace:*
+        version: link:../db
+      '@shopify-agent-channel/exec':
+        specifier: workspace:*
+        version: link:../exec
+      '@shopify-agent-channel/ingest':
+        specifier: workspace:*
+        version: link:../ingest
+      '@shopify-agent-channel/manifest':
+        specifier: workspace:*
+        version: link:../manifest
+      '@shopify-agent-channel/shopify-auth':
+        specifier: workspace:*
+        version: link:../shopify-auth
+      drizzle-orm:
+        specifier: ^0.45.1
+        version: 0.45.1(@neondatabase/serverless@1.0.2)(@types/pg@8.16.0)
+      hono:
+        specifier: ^4.0.0
+        version: 4.12.3
 
   packages/catalog:
     dependencies:

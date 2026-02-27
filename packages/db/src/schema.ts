@@ -25,6 +25,7 @@ export const shops = pgTable('shops', {
   installedAt: timestamp('installed_at').defaultNow(),
   uninstalledAt: timestamp('uninstalled_at'),
   lastSyncedAt: timestamp('last_synced_at'),
+  lastVerifiedAt: timestamp('last_verified_at'),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 });

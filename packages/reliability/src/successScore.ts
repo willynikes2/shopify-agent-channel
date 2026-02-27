@@ -105,7 +105,13 @@ export async function getSuccessScores(
     p50LatencyMs: r.p50LatencyMs ?? 0,
     p95LatencyMs: r.p95LatencyMs ?? 0,
     totalRuns: r.totalRuns,
-    failureModes: (r.failureModesJson as Record<string, number>) ?? {},
+    failureModes: (
+      r.failureModesJson !== null &&
+      typeof r.failureModesJson === 'object' &&
+      !Array.isArray(r.failureModesJson)
+    )
+      ? (r.failureModesJson as Record<string, number>)
+      : {},
   }));
 }
 

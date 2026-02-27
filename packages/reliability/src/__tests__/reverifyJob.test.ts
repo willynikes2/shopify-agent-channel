@@ -86,6 +86,15 @@ describe('runNightlyReverification', () => {
     expect(toolNames).toContain('initiate_checkout');
   });
 
+  it('chains create_cart cart_id into initiate_checkout', async () => {
+    const db = makeDb();
+    const router = makeRouter();
+    await runNightlyReverification(db as any, router as any);
+    const checkoutCall = router.execute.mock.calls.find((c: any) => c[0].toolName === 'initiate_checkout');
+    expect(checkoutCall).toBeDefined();
+    expect(checkoutCall![0].inputs.cart_id).toBe('cart-1');
+  });
+
   it('returns toolsVerified count (4 per shop)', async () => {
     const db = makeDb();
     const router = makeRouter();
@@ -95,7 +104,6 @@ describe('runNightlyReverification', () => {
 
   it('detects regressions when a tool has < 80% success rate', async () => {
     const db = makeDb();
-    // Make search_products fail
     const router = makeRouter();
     let callCount = 0;
     router.execute.mockImplementation(() => {
@@ -104,7 +112,8 @@ describe('runNightlyReverification', () => {
       if (callCount === 1) {
         return Promise.resolve({ status: 'error', error: { code: 'FAIL', message: 'fail' }, latencyMs: 50 });
       }
-      return Promise.resolve({ status: 'success', data: {}, latencyMs: 50 });
+      // create_cart returns cart_id so initiate_checkout can chain
+      return Promise.resolve({ status: 'success', data: { cart_id: 'cart-1' }, latencyMs: 50 });
     });
 
     // Seed tool_runs that show poor history for search_products
@@ -128,14 +137,16 @@ describe('runNightlyReverification', () => {
     });
   });
 
-  it('skips shops with no active products', async () => {
+  it('only runs search_products when shop has no products', async () => {
     const db = makeDb([SHOP_1], []);
     db.query.products.findFirst.mockResolvedValue(null);
     const router = makeRouter();
     const report = await runNightlyReverification(db as any, router as any);
-    // Should still attempt search_products (doesn't need a product)
-    // but get_product, create_cart, initiate_checkout need a product/variant
     expect(report.shopsChecked).toBe(1);
+    // Only search_products runs — no product means no get_product/create_cart,
+    // no cart means no initiate_checkout
+    expect(router.execute).toHaveBeenCalledTimes(1);
+    expect(router.execute.mock.calls[0][0].toolName).toBe('search_products');
   });
 
   it('handles multiple shops', async () => {
@@ -147,7 +158,7 @@ describe('runNightlyReverification', () => {
     expect(report.toolsVerified).toBe(8); // 4 tools × 2 shops
   });
 
-  it('updates shop.last_verified_at (calls db.update)', async () => {
+  it('updates shop.lastVerifiedAt (calls db.update)', async () => {
     const db = makeDb();
     const router = makeRouter();
     await runNightlyReverification(db as any, router as any);
@@ -172,5 +183,20 @@ describe('runNightlyReverification', () => {
 
     const report = await runNightlyReverification(db as any, router as any);
     expect(report.regressions).toEqual([]);
+  });
+
+  it('continues to remaining shops when router.execute throws', async () => {
+    const shop2 = { ...SHOP_1, id: 'shop-uuid-2', shopDomain: 'other.myshopify.com' };
+    const db = makeDb([SHOP_1, shop2]);
+    const router = makeRouter();
+    let callCount = 0;
+    router.execute.mockImplementation(() => {
+      callCount++;
+      // First call throws
+      if (callCount === 1) return Promise.reject(new Error('network timeout'));
+      return Promise.resolve({ status: 'success', data: { cart_id: 'cart-1' }, latencyMs: 50 });
+    });
+    const report = await runNightlyReverification(db as any, router as any);
+    expect(report.shopsChecked).toBe(2); // both shops processed
   });
 });

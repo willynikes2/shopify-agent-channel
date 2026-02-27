@@ -81,25 +81,38 @@ export async function runNightlyReverification(
     });
 
     const variantId = sampleProduct
-      ? ((sampleProduct.variantsJson as any[])?.[0]?.id ?? null)
+      ? extractVariantId(sampleProduct.variantsJson)
       : null;
+
+    // Track the cart_id from create_cart for initiate_checkout
+    let lastCartId: string | null = null;
 
     // Run each tool
     for (const toolName of TOOL_NAMES) {
-      const inputs = buildReverifyInputs(toolName, sampleProduct, variantId);
+      const inputs = buildReverifyInputs(toolName, sampleProduct, variantId, lastCartId);
       if (inputs === null) continue; // Skip if we can't build inputs
 
-      await router.execute(
-        {
-          shopId: shop.id,
-          toolName,
-          inputs,
-          authContext: { isAuthenticated: true, agentId: 'reverify-nightly' },
-        },
-        REVERIFY_TOOL_DEFS[toolName]!,
-      );
+      try {
+        const result = await router.execute(
+          {
+            shopId: shop.id,
+            toolName,
+            inputs,
+            authContext: { isAuthenticated: true, agentId: 'reverify-nightly' },
+          },
+          REVERIFY_TOOL_DEFS[toolName]!,
+        );
 
-      toolsVerified++;
+        // Extract cart_id from create_cart result for initiate_checkout
+        if (toolName === 'create_cart' && result.status === 'success' && result.data) {
+          lastCartId = (result.data as { cart_id?: string }).cart_id ?? null;
+        }
+
+        toolsVerified++;
+      } catch {
+        // Tool execution threw — continue to next tool, don't abort the job
+        toolsVerified++;
+      }
     }
 
     // Recompute success scores for all tools
@@ -118,7 +131,7 @@ export async function runNightlyReverification(
     // Update last_verified_at
     await db
       .update(shops)
-      .set({ lastSyncedAt: new Date() })
+      .set({ lastVerifiedAt: new Date() })
       .where(eq(shops.id, shop.id));
   }
 
@@ -130,27 +143,40 @@ export async function runNightlyReverification(
 }
 
 /**
+ * Safely extract variant ID from the jsonb variantsJson column.
+ */
+function extractVariantId(json: unknown): string | null {
+  if (!Array.isArray(json) || json.length === 0) return null;
+  const first = json[0];
+  if (typeof first === 'object' && first !== null && typeof (first as { id?: unknown }).id === 'string') {
+    return (first as { id: string }).id;
+  }
+  return null;
+}
+
+/**
  * Build inputs for each tool's reverification run.
  */
 function buildReverifyInputs(
   toolName: string,
-  product: any | null,
+  product: unknown | null,
   variantId: string | null,
+  cartId: string | null,
 ): Record<string, unknown> | null {
   switch (toolName) {
     case 'search_products':
       return { query: 'test' };
     case 'get_product':
-      return product
-        ? { product_id: product.shopifyProductId }
+      return product && typeof product === 'object' && 'shopifyProductId' in product
+        ? { product_id: (product as { shopifyProductId: string }).shopifyProductId }
         : null;
     case 'create_cart':
       return variantId
         ? { lines: [{ variant_id: variantId, quantity: 1 }] }
         : null;
     case 'initiate_checkout':
-      // Use a placeholder — the router will attempt to get a checkout URL
-      return { cart_id: 'reverify-synthetic' };
+      // Only probe checkout if we have a real cart from create_cart
+      return cartId ? { cart_id: cartId } : null;
     default:
       return null;
   }

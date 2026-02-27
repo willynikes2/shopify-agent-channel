@@ -166,7 +166,20 @@ importers:
         specifier: ^0.45.1
         version: 0.45.1(@neondatabase/serverless@1.0.2)(@types/pg@8.16.0)
 
-  packages/reliability: {}
+  packages/reliability:
+    dependencies:
+      '@shopify-agent-channel/catalog':
+        specifier: workspace:*
+        version: link:../catalog
+      '@shopify-agent-channel/db':
+        specifier: workspace:*
+        version: link:../db
+      '@shopify-agent-channel/exec':
+        specifier: workspace:*
+        version: link:../exec
+      drizzle-orm:
+        specifier: ^0.45.1
+        version: 0.45.1(@neondatabase/serverless@1.0.2)(@types/pg@8.16.0)
 
   packages/shared: {}
 

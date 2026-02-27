@@ -5,6 +5,14 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "@shopify-agent-channel/catalog": "workspace:*",
+    "@shopify-agent-channel/db": "workspace:*",
+    "@shopify-agent-channel/exec": "workspace:*",
+    "@shopify-agent-channel/manifest": "workspace:*",
+    "drizzle-orm": "^0.45.1"
+  },
   "scripts": {
     "build": "tsc",
     "test": "vitest run",

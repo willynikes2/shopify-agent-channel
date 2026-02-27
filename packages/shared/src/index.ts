@@ -1,3 +1,16 @@
-// @shopify-agent-channel/shared
-// Placeholder — implementation added per phase
-export {};
+export type {
+  Database,
+  ExecRequest,
+  ExecResult,
+  ToolDefinition,
+  Capability,
+  CapabilityMap,
+  CapabilityMapMetadata,
+  ProductSearchResult,
+  SearchFilters,
+  VariantResult,
+  AgentsJson,
+  SuccessScoreResult,
+  ReverifyReport,
+  Regression,
+} from './types.js';

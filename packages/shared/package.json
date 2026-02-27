@@ -5,6 +5,13 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "dependencies": {
+    "@shopify-agent-channel/db": "workspace:*",
+    "@shopify-agent-channel/exec": "workspace:*",
+    "@shopify-agent-channel/catalog": "workspace:*",
+    "@shopify-agent-channel/manifest": "workspace:*",
+    "@shopify-agent-channel/reliability": "workspace:*"
+  },
   "scripts": {
     "build": "tsc",
     "test": "vitest run",

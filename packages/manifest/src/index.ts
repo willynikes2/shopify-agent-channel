@@ -1,3 +1,2 @@
-// @shopify-agent-channel/manifest
-// Placeholder — implementation added per phase
-export {};
+export { generateAgentsJson, saveManifest } from './generateAgentsJson.js';
+export type { AgentsJson, AgentsJsonCapability } from './generateAgentsJson.js';

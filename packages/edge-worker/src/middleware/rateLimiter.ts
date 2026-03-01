@@ -1,3 +1,12 @@
+/**
+ * In-process rate limiter.
+ *
+ * LIMITATIONS:
+ * - State is per-isolate — does NOT persist across Cloudflare Worker instances.
+ * - For production, replace with Durable Objects or KV-backed limiter.
+ * - Only CF-Connecting-IP is trusted for client identification.
+ */
+
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */

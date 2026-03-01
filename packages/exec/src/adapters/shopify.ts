@@ -3,7 +3,7 @@ import type { Database } from '@shopify-agent-channel/db';
 import { products, shops } from '@shopify-agent-channel/db';
 import { searchProducts } from '@shopify-agent-channel/catalog';
 import type { SearchFilters } from '@shopify-agent-channel/catalog';
-import { decryptToken } from '@shopify-agent-channel/shopify-auth';
+import { decryptToken, validateEncryptionKey } from '@shopify-agent-channel/shopify-auth';
 import { StorefrontClient } from './storefrontClient.js';
 import type { ExecResult } from '../types.js';
 
@@ -80,7 +80,7 @@ export class ShopifyAdapter {
     }
     const token = decryptToken(
       shop.shopifyAccessTokenEncrypted,
-      process.env['ENCRYPTION_KEY']!,
+      this.getEncryptionKey(),
     );
     const storefront = this.storefrontFactory(shop.shopDomain, token);
     const lines = (inputs['lines'] as Array<{ variant_id: string; quantity: number }>) ?? [];
@@ -114,7 +114,7 @@ export class ShopifyAdapter {
     }
     const token = decryptToken(
       shop.shopifyAccessTokenEncrypted,
-      process.env['ENCRYPTION_KEY']!,
+      this.getEncryptionKey(),
     );
     const storefront = this.storefrontFactory(shop.shopDomain, token);
     const cartId = inputs['cart_id'] as string;
@@ -124,6 +124,12 @@ export class ShopifyAdapter {
       data: { checkout_url: cart.checkoutUrl },
       latencyMs: 0,
     };
+  }
+
+  private getEncryptionKey(): string {
+    const key = process.env['ENCRYPTION_KEY'] ?? '';
+    validateEncryptionKey(key);
+    return key;
   }
 
   private async loadShop(shopId: string) {

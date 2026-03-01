@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { describe, expect, it, vi } from 'vitest';
 import { registerTools } from '../registerTools.js';
 import type { AgentsJson } from '@shopify-agent-channel/manifest';
@@ -7,6 +8,8 @@ import type { AgentsJson } from '@shopify-agent-channel/manifest';
 // ---------------------------------------------------------------------------
 
 const SHOP_ID = 'shop-uuid-1';
+const VALID_TOKEN = 'bearer_tok_abc123';
+const VALID_TOKEN_HASH = createHash('sha256').update(VALID_TOKEN).digest('hex');
 
 const MOCK_AGENTS_JSON: AgentsJson = {
   name: 'Cool Store Agent Channel',
@@ -104,6 +107,19 @@ function makeRouter(
   return { execute: vi.fn().mockResolvedValue(result) };
 }
 
+function makeDb(shop: { id: string; agentApiKeyHash: string | null } | null = {
+  id: SHOP_ID,
+  agentApiKeyHash: VALID_TOKEN_HASH,
+}) {
+  return {
+    query: {
+      shops: {
+        findFirst: vi.fn().mockResolvedValue(shop),
+      },
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Registration
 // ---------------------------------------------------------------------------
@@ -111,7 +127,7 @@ function makeRouter(
 describe('registerTools — registration', () => {
   it('registers exactly 2 request handlers', () => {
     const server = makeServer();
-    registerTools(server as any, MOCK_AGENTS_JSON, SHOP_ID, makeRouter() as any);
+    registerTools(server as any, MOCK_AGENTS_JSON, SHOP_ID, makeRouter() as any, makeDb() as any);
     expect(server.setRequestHandler).toHaveBeenCalledTimes(2);
   });
 });
@@ -123,7 +139,7 @@ describe('registerTools — registration', () => {
 describe('registerTools — list tools', () => {
   it('returns exactly 4 tools', async () => {
     const server = makeServer();
-    registerTools(server as any, MOCK_AGENTS_JSON, SHOP_ID, makeRouter() as any);
+    registerTools(server as any, MOCK_AGENTS_JSON, SHOP_ID, makeRouter() as any, makeDb() as any);
 
     const { tools } = (await server.listToolsHandler({})) as { tools: unknown[] };
 
@@ -132,7 +148,7 @@ describe('registerTools — list tools', () => {
 
   it('returns all 4 expected tool names', async () => {
     const server = makeServer();
-    registerTools(server as any, MOCK_AGENTS_JSON, SHOP_ID, makeRouter() as any);
+    registerTools(server as any, MOCK_AGENTS_JSON, SHOP_ID, makeRouter() as any, makeDb() as any);
 
     const { tools } = (await server.listToolsHandler({})) as { tools: Array<{ name: string }> };
     const names = tools.map((t) => t.name).sort();
@@ -142,7 +158,7 @@ describe('registerTools — list tools', () => {
 
   it('each tool has a non-empty description', async () => {
     const server = makeServer();
-    registerTools(server as any, MOCK_AGENTS_JSON, SHOP_ID, makeRouter() as any);
+    registerTools(server as any, MOCK_AGENTS_JSON, SHOP_ID, makeRouter() as any, makeDb() as any);
 
     const { tools } = (await server.listToolsHandler({})) as {
       tools: Array<{ name: string; description: string }>;
@@ -156,7 +172,7 @@ describe('registerTools — list tools', () => {
 
   it('each tool has an inputSchema', async () => {
     const server = makeServer();
-    registerTools(server as any, MOCK_AGENTS_JSON, SHOP_ID, makeRouter() as any);
+    registerTools(server as any, MOCK_AGENTS_JSON, SHOP_ID, makeRouter() as any, makeDb() as any);
 
     const { tools } = (await server.listToolsHandler({})) as {
       tools: Array<{ inputSchema: unknown }>;
@@ -176,7 +192,7 @@ describe('registerTools — call tools', () => {
   it('calls router.execute with correct shopId, toolName, and inputs', async () => {
     const server = makeServer();
     const router = makeRouter();
-    registerTools(server as any, MOCK_AGENTS_JSON, SHOP_ID, router as any);
+    registerTools(server as any, MOCK_AGENTS_JSON, SHOP_ID, router as any, makeDb() as any);
 
     await server.callToolHandler({
       params: { name: 'search_products', arguments: { query: 'sneakers' } },
@@ -192,7 +208,7 @@ describe('registerTools — call tools', () => {
   it('passes the matching ToolDefinition as second arg to router', async () => {
     const server = makeServer();
     const router = makeRouter();
-    registerTools(server as any, MOCK_AGENTS_JSON, SHOP_ID, router as any);
+    registerTools(server as any, MOCK_AGENTS_JSON, SHOP_ID, router as any, makeDb() as any);
 
     await server.callToolHandler({
       params: { name: 'search_products', arguments: { query: 'shoes' } },
@@ -206,7 +222,7 @@ describe('registerTools — call tools', () => {
   it('returns result data as JSON text in content', async () => {
     const server = makeServer();
     const router = makeRouter({ status: 'success', data: { results: [{ id: 'p1' }], totalFound: 1 }, latencyMs: 5 });
-    registerTools(server as any, MOCK_AGENTS_JSON, SHOP_ID, router as any);
+    registerTools(server as any, MOCK_AGENTS_JSON, SHOP_ID, router as any, makeDb() as any);
 
     const result = (await server.callToolHandler({
       params: { name: 'search_products', arguments: { query: 'shoes' } },
@@ -224,41 +240,100 @@ describe('registerTools — call tools', () => {
 // ---------------------------------------------------------------------------
 
 describe('registerTools — auth context', () => {
-  it('sets isAuthenticated: false for auth-required tool with no token', async () => {
-    const server = makeServer();
-    const router = makeRouter({ status: 'auth_required', data: undefined, latencyMs: 0 });
-    registerTools(server as any, MOCK_AGENTS_JSON, SHOP_ID, router as any);
-
-    await server.callToolHandler({
-      params: { name: 'create_cart', arguments: { lines: [] }, _meta: {} },
-    });
-
-    const [execRequest] = router.execute.mock.calls[0] as any[];
-    expect(execRequest.authContext.isAuthenticated).toBe(false);
-  });
-
-  it('sets isAuthenticated: true when authToken is in _meta', async () => {
+  it('returns error early for auth-required tool with no token (does not call router)', async () => {
     const server = makeServer();
     const router = makeRouter();
-    registerTools(server as any, MOCK_AGENTS_JSON, SHOP_ID, router as any);
+    registerTools(server as any, MOCK_AGENTS_JSON, SHOP_ID, router as any, makeDb() as any);
+
+    const result = (await server.callToolHandler({
+      params: { name: 'create_cart', arguments: { lines: [] }, _meta: {} },
+    })) as { content: Array<{ text: string }>; isError: boolean };
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.text).toContain('Authentication required');
+    expect(router.execute).not.toHaveBeenCalled();
+  });
+
+  it('verifies token against DB hash and passes isAuthenticated: true when valid', async () => {
+    const server = makeServer();
+    const router = makeRouter();
+    registerTools(server as any, MOCK_AGENTS_JSON, SHOP_ID, router as any, makeDb() as any);
 
     await server.callToolHandler({
       params: {
         name: 'create_cart',
         arguments: { lines: [] },
-        _meta: { authToken: 'bearer_tok_abc123' },
+        _meta: { authToken: VALID_TOKEN },
       },
     });
 
+    expect(router.execute).toHaveBeenCalledTimes(1);
     const [execRequest] = router.execute.mock.calls[0] as any[];
     expect(execRequest.authContext.isAuthenticated).toBe(true);
-    expect(execRequest.authContext.token).toBe('bearer_tok_abc123');
+    // token should NOT be passed through to authContext
+    expect(execRequest.authContext.token).toBeUndefined();
+  });
+
+  it('rejects invalid token with error (does not call router)', async () => {
+    const server = makeServer();
+    const router = makeRouter();
+    registerTools(server as any, MOCK_AGENTS_JSON, SHOP_ID, router as any, makeDb() as any);
+
+    const result = (await server.callToolHandler({
+      params: {
+        name: 'create_cart',
+        arguments: { lines: [] },
+        _meta: { authToken: 'wrong_token_value' },
+      },
+    })) as { content: Array<{ text: string }>; isError: boolean };
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.text).toContain('Invalid API token');
+    expect(router.execute).not.toHaveBeenCalled();
+  });
+
+  it('returns error when shop has no agentApiKeyHash configured', async () => {
+    const server = makeServer();
+    const router = makeRouter();
+    const db = makeDb({ id: SHOP_ID, agentApiKeyHash: null });
+    registerTools(server as any, MOCK_AGENTS_JSON, SHOP_ID, router as any, db as any);
+
+    const result = (await server.callToolHandler({
+      params: {
+        name: 'create_cart',
+        arguments: { lines: [] },
+        _meta: { authToken: VALID_TOKEN },
+      },
+    })) as { content: Array<{ text: string }>; isError: boolean };
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.text).toContain('No API key configured');
+    expect(router.execute).not.toHaveBeenCalled();
+  });
+
+  it('returns error when shop is not found in DB', async () => {
+    const server = makeServer();
+    const router = makeRouter();
+    const db = makeDb(null);
+    registerTools(server as any, MOCK_AGENTS_JSON, SHOP_ID, router as any, db as any);
+
+    const result = (await server.callToolHandler({
+      params: {
+        name: 'create_cart',
+        arguments: { lines: [] },
+        _meta: { authToken: VALID_TOKEN },
+      },
+    })) as { content: Array<{ text: string }>; isError: boolean };
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.text).toContain('No API key configured');
+    expect(router.execute).not.toHaveBeenCalled();
   });
 
   it('public tools are always authenticated regardless of token', async () => {
     const server = makeServer();
     const router = makeRouter();
-    registerTools(server as any, MOCK_AGENTS_JSON, SHOP_ID, router as any);
+    registerTools(server as any, MOCK_AGENTS_JSON, SHOP_ID, router as any, makeDb() as any);
 
     await server.callToolHandler({
       params: { name: 'search_products', arguments: { query: 'shoes' }, _meta: undefined },
@@ -277,7 +352,7 @@ describe('registerTools — error cases', () => {
   it('returns isError for unknown tool name', async () => {
     const server = makeServer();
     const router = makeRouter();
-    registerTools(server as any, MOCK_AGENTS_JSON, SHOP_ID, router as any);
+    registerTools(server as any, MOCK_AGENTS_JSON, SHOP_ID, router as any, makeDb() as any);
 
     const result = (await server.callToolHandler({
       params: { name: 'nonexistent_tool', arguments: {} },
@@ -287,13 +362,18 @@ describe('registerTools — error cases', () => {
     expect(router.execute).not.toHaveBeenCalled();
   });
 
-  it('marks auth_required results as isError', async () => {
+  it('marks auth_required results from router as isError', async () => {
     const server = makeServer();
     const router = makeRouter({ status: 'auth_required', data: undefined, latencyMs: 0 });
-    registerTools(server as any, MOCK_AGENTS_JSON, SHOP_ID, router as any);
+    registerTools(server as any, MOCK_AGENTS_JSON, SHOP_ID, router as any, makeDb() as any);
 
+    // Use a valid token so it passes DB verification and reaches the router
     const result = (await server.callToolHandler({
-      params: { name: 'create_cart', arguments: { lines: [] } },
+      params: {
+        name: 'create_cart',
+        arguments: { lines: [] },
+        _meta: { authToken: VALID_TOKEN },
+      },
     })) as { isError: boolean };
 
     expect(result.isError).toBe(true);

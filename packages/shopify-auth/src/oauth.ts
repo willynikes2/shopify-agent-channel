@@ -1,9 +1,28 @@
-import { createHmac, timingSafeEqual } from 'crypto';
+import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
 
 const SHOPIFY_SCOPES =
   'read_products,read_product_listings,read_inventory,read_orders';
 
-export async function generateInstallUrl(shopDomain: string): Promise<string> {
+const SHOP_DOMAIN_REGEX = /^[a-zA-Z0-9][a-zA-Z0-9-]*\.myshopify\.com$/;
+
+export function validateShopDomain(shop: string): void {
+  if (!SHOP_DOMAIN_REGEX.test(shop)) {
+    throw new Error('Invalid shop domain: must match <store>.myshopify.com');
+  }
+}
+
+export function generateOAuthState(): string {
+  return randomBytes(32).toString('hex');
+}
+
+export function validateOAuthState(state: string): void {
+  if (!state || !/^[0-9a-f]{64}$/i.test(state)) {
+    throw new Error('Invalid or missing OAuth state parameter');
+  }
+}
+
+export async function generateInstallUrl(shopDomain: string, state?: string): Promise<string> {
+  validateShopDomain(shopDomain);
   const apiKey = process.env['SHOPIFY_API_KEY'] ?? '';
   const appUrl = process.env['SHOPIFY_APP_URL'] ?? '';
   const params = new URLSearchParams({
@@ -11,6 +30,9 @@ export async function generateInstallUrl(shopDomain: string): Promise<string> {
     scope: SHOPIFY_SCOPES,
     redirect_uri: `${appUrl}/auth/shopify/callback`,
   });
+  if (state) {
+    params.set('state', state);
+  }
   return `https://${shopDomain}/admin/oauth/authorize?${params.toString()}`;
 }
 
@@ -20,6 +42,8 @@ export async function handleOAuthCallback(params: {
   hmac: string;
   timestamp: string;
 }): Promise<{ accessToken: string; scopes: string }> {
+  validateShopDomain(params.shop);
+
   const secret = process.env['SHOPIFY_API_SECRET'] ?? '';
 
   // Build message from all params except hmac, sorted
@@ -34,6 +58,12 @@ export async function handleOAuthCallback(params: {
   const expectedBuf = Buffer.from(expected, 'hex');
   if (actual.length !== expectedBuf.length || !timingSafeEqual(actual, expectedBuf)) {
     throw new Error('Invalid HMAC signature');
+  }
+
+  // Timestamp freshness check — reject callbacks older than 60 seconds
+  const ts = parseInt(params.timestamp, 10);
+  if (isNaN(ts) || Math.floor(Date.now() / 1000) - ts > 60) {
+    throw new Error('OAuth callback expired');
   }
 
   const apiKey = process.env['SHOPIFY_API_KEY'] ?? '';

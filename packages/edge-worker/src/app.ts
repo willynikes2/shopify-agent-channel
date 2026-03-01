@@ -47,6 +47,19 @@ export function createEdgeApp(config: EdgeAppConfig): Hono<{ Variables: Variable
   const app = new Hono<{ Variables: Variables }>();
 
   /* ---------------------------------------------------------------- */
+  /* 0. Security response headers                                      */
+  /* ---------------------------------------------------------------- */
+
+  app.use('*', async (c, next) => {
+    await next();
+    c.header('X-Content-Type-Options', 'nosniff');
+    c.header('X-Frame-Options', 'DENY');
+    c.header('Referrer-Policy', 'no-referrer');
+    c.header('X-XSS-Protection', '0');
+    c.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  });
+
+  /* ---------------------------------------------------------------- */
   /* 1. Path-prefix rewrite middleware: /shop/:domain/*                */
   /* ---------------------------------------------------------------- */
 
@@ -85,10 +98,6 @@ export function createEdgeApp(config: EdgeAppConfig): Hono<{ Variables: Variable
     c.set('shopDomain', shop.shopDomain);
     c.set('shopName', shop.shopName ?? '');
 
-    // Set response headers
-    c.header('X-Resolved-Shop-Id', shop.id);
-    c.header('X-Resolved-Shop-Domain', shop.shopDomain);
-
     await next();
   });
 
@@ -97,10 +106,9 @@ export function createEdgeApp(config: EdgeAppConfig): Hono<{ Variables: Variable
   /* ---------------------------------------------------------------- */
 
   app.use('*', async (c, next) => {
-    // Determine client IP
+    // Determine client IP — only trust CF-Connecting-IP (X-Forwarded-For is attacker-controlled)
     const cfIp = c.req.header('CF-Connecting-IP');
-    const xForwardedFor = c.req.header('X-Forwarded-For');
-    const ip = cfIp ?? xForwardedFor?.split(',')[0]?.trim() ?? 'unknown';
+    const ip = cfIp ?? 'unknown';
 
     const authHeader = c.req.header('Authorization') ?? undefined;
     const pathname = new URL(c.req.url).pathname;

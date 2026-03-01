@@ -264,15 +264,15 @@ describe('Edge App', () => {
     expect(body.size).toBe('11');
   });
 
-  /* ---- 6. Sets X-Resolved-Shop-Id header ------------------------- */
+  /* ---- 6. Does NOT expose internal shop ID in headers ------------ */
 
-  it('sets X-Resolved-Shop-Id on response headers', async () => {
+  it('does not expose internal shop ID in response headers', async () => {
     const { app } = makeApp();
     const res = await app.request('/', {
       headers: { 'X-Shop-Domain': 'cool-kicks.myshopify.com' },
     });
-    expect(res.headers.get('X-Resolved-Shop-Id')).toBe('shop-uuid-1');
-    expect(res.headers.get('X-Resolved-Shop-Domain')).toBe('cool-kicks.myshopify.com');
+    expect(res.headers.get('X-Resolved-Shop-Id')).toBeNull();
+    expect(res.headers.get('X-Resolved-Shop-Domain')).toBeNull();
   });
 
   /* ---- 7. agents.json returns manifest with 4 capabilities ------- */

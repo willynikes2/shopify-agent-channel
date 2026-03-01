@@ -1,5 +1,9 @@
+import { createHash, timingSafeEqual } from 'crypto';
+import { eq } from 'drizzle-orm';
 import { ListToolsRequestSchema, CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import type { Database } from '@shopify-agent-channel/db';
+import { shops } from '@shopify-agent-channel/db';
 import type { AgentsJson } from '@shopify-agent-channel/manifest';
 import type { ExecutionRouter } from '@shopify-agent-channel/exec';
 import type { ToolDefinition } from '@shopify-agent-channel/catalog';
@@ -19,6 +23,7 @@ export function registerTools(
   agentsJson: AgentsJson,
   shopId: string,
   router: ExecutionRouter,
+  db: Database,
 ): void {
   // Derive ToolDefinitions from manifest capabilities (needed for auth check in router)
   const toolDefs: ToolDefinition[] = agentsJson.capabilities.map((cap) => ({
@@ -61,11 +66,38 @@ export function registerTools(
       };
     }
 
-    // Public tools are always authenticated; write tools require a token
-    const isAuthenticated = toolDef.requires_auth ? !!authToken : true;
+    // Public tools pass through; write tools require a valid API token
+    let isAuthenticated = !toolDef.requires_auth;
+    if (toolDef.requires_auth) {
+      if (!authToken) {
+        return {
+          content: [{ type: 'text' as const, text: 'Authentication required. Provide a valid API token in _meta.authToken.' }],
+          isError: true,
+        };
+      }
+      const tokenHash = createHash('sha256').update(authToken).digest('hex');
+      const shop = await db.query.shops.findFirst({
+        where: eq(shops.id, shopId),
+      });
+      if (!shop?.agentApiKeyHash) {
+        return {
+          content: [{ type: 'text' as const, text: 'No API key configured for this shop.' }],
+          isError: true,
+        };
+      }
+      const expected = Buffer.from(shop.agentApiKeyHash, 'hex');
+      const actual = Buffer.from(tokenHash, 'hex');
+      isAuthenticated = expected.length === actual.length && timingSafeEqual(expected, actual);
+      if (!isAuthenticated) {
+        return {
+          content: [{ type: 'text' as const, text: 'Invalid API token.' }],
+          isError: true,
+        };
+      }
+    }
 
     const result = await router.execute(
-      { shopId, toolName, inputs, authContext: { isAuthenticated, token: authToken } },
+      { shopId, toolName, inputs, authContext: { isAuthenticated } },
       toolDef,
     );
 

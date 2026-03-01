@@ -3,7 +3,14 @@ import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12;
 
+export function validateEncryptionKey(key: string): void {
+  if (!key || !/^[0-9a-f]{64}$/i.test(key)) {
+    throw new Error('ENCRYPTION_KEY must be exactly 64 hex characters (32 bytes)');
+  }
+}
+
 export function encryptToken(token: string, key: string): string {
+  validateEncryptionKey(key);
   const keyBuffer = Buffer.from(key, 'hex');
   const iv = randomBytes(IV_LENGTH);
   const cipher = createCipheriv(ALGORITHM, keyBuffer, iv);
@@ -13,6 +20,7 @@ export function encryptToken(token: string, key: string): string {
 }
 
 export function decryptToken(encrypted: string, key: string): string {
+  validateEncryptionKey(key);
   const parts = encrypted.split(':');
   if (parts.length !== 3) throw new Error('Invalid encrypted token format');
   const [ivHex, authTagHex, ciphertextHex] = parts as [string, string, string];

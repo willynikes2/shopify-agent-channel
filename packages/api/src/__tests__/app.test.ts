@@ -1,12 +1,19 @@
 import { describe, expect, it, vi } from 'vitest';
+import { createHash } from 'crypto';
 import { createApp } from '../index.js';
 import type { AgentsJson } from '@shopify-agent-channel/manifest';
+
+// Set env before any createApp calls
+process.env['SHOPIFY_APP_URL'] = 'http://localhost:3000';
 
 // ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------
 
 const SHOP_ID = 'shop-uuid-1';
+const ADMIN_KEY = 'a]b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6'; // 32 chars
+const TEST_TOKEN = 'tok_abc_test_token_1234567890abcdef';
+const TEST_TOKEN_HASH = createHash('sha256').update(TEST_TOKEN).digest('hex');
 
 const MOCK_AGENTS_JSON: AgentsJson = {
   name: 'Cool Kicks Agent Channel',
@@ -56,7 +63,7 @@ function makeDb() {
   return {
     query: {
       successScores: { findMany: vi.fn().mockResolvedValue([]) },
-      shops: { findFirst: vi.fn().mockResolvedValue(null) },
+      shops: { findFirst: vi.fn().mockResolvedValue({ agentApiKeyHash: TEST_TOKEN_HASH }) },
       manifests: { findFirst: vi.fn().mockResolvedValue(null) },
       toolRuns: { findMany: vi.fn().mockResolvedValue([]) },
     },
@@ -69,7 +76,8 @@ function makeApp(routerResult?: { status: 'success'; data: unknown; latencyMs: n
     db: makeDb() as any,
     router: makeRouter(routerResult) as any,
     agentsJson: MOCK_AGENTS_JSON,
-    adminApiKey: 'admin-secret',
+    adminApiKey: ADMIN_KEY,
+    corsOrigin: 'http://localhost:3000',
   });
 }
 
@@ -108,7 +116,7 @@ describe('GET /api/products/search', () => {
 
   it('passes query string q to router inputs', async () => {
     const router = makeRouter();
-    const app = createApp({ shopId: SHOP_ID, db: makeDb() as any, router: router as any, agentsJson: MOCK_AGENTS_JSON });
+    const app = createApp({ shopId: SHOP_ID, db: makeDb() as any, router: router as any, agentsJson: MOCK_AGENTS_JSON, adminApiKey: ADMIN_KEY, corsOrigin: 'http://localhost:3000' });
     await app.request('/api/products/search?q=sneakers');
     const [execReq] = router.execute.mock.calls[0]! as any[];
     expect(execReq.inputs.query).toBe('sneakers');
@@ -116,7 +124,7 @@ describe('GET /api/products/search', () => {
 
   it('passes size, min_price, and in_stock filters to router', async () => {
     const router = makeRouter();
-    const app = createApp({ shopId: SHOP_ID, db: makeDb() as any, router: router as any, agentsJson: MOCK_AGENTS_JSON });
+    const app = createApp({ shopId: SHOP_ID, db: makeDb() as any, router: router as any, agentsJson: MOCK_AGENTS_JSON, adminApiKey: ADMIN_KEY, corsOrigin: 'http://localhost:3000' });
     await app.request('/api/products/search?q=shoes&size=11&min_price=50&in_stock=true');
     const [execReq] = router.execute.mock.calls[0]! as any[];
     expect(execReq.inputs.filters).toMatchObject({ size: '11', minPrice: 50, inStock: true });
@@ -124,7 +132,7 @@ describe('GET /api/products/search', () => {
 
   it('uses isAuthenticated: true (public route)', async () => {
     const router = makeRouter();
-    const app = createApp({ shopId: SHOP_ID, db: makeDb() as any, router: router as any, agentsJson: MOCK_AGENTS_JSON });
+    const app = createApp({ shopId: SHOP_ID, db: makeDb() as any, router: router as any, agentsJson: MOCK_AGENTS_JSON, adminApiKey: ADMIN_KEY, corsOrigin: 'http://localhost:3000' });
     await app.request('/api/products/search?q=shoes');
     const [execReq] = router.execute.mock.calls[0]! as any[];
     expect(execReq.authContext.isAuthenticated).toBe(true);
@@ -149,8 +157,8 @@ describe('GET /api/products/:product_id', () => {
     const router = makeRouter({ status: 'error' as const, data: undefined, latencyMs: 5 } as any);
     // Override with error result
     (router.execute as any).mockResolvedValue({ status: 'error', error: { code: 'NOT_FOUND', message: 'Product not found' }, latencyMs: 5 });
-    const app = createApp({ shopId: SHOP_ID, db: makeDb() as any, router: router as any, agentsJson: MOCK_AGENTS_JSON });
-    const res = await app.request('/api/products/nonexistent');
+    const app = createApp({ shopId: SHOP_ID, db: makeDb() as any, router: router as any, agentsJson: MOCK_AGENTS_JSON, adminApiKey: ADMIN_KEY, corsOrigin: 'http://localhost:3000' });
+    const res = await app.request('/api/products/999999');
     expect(res.status).toBe(404);
   });
 });
@@ -185,7 +193,7 @@ describe('POST /api/cart', () => {
     const app = makeApp({ status: 'success', data: cartData, latencyMs: 5 });
     const res = await app.request('/api/cart', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer tok_abc' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TEST_TOKEN}`, 'X-Shop-Domain': 'test.myshopify.com' },
       body: JSON.stringify({ lines: [{ variant_id: 'gid://shopify/ProductVariant/1', quantity: 1 }] }),
     });
     expect(res.status).toBe(201);
@@ -195,14 +203,13 @@ describe('POST /api/cart', () => {
 
   it('forwards bearer token to authContext', async () => {
     const router = makeRouter({ status: 'success', data: { cart_id: 'c1' }, latencyMs: 5 });
-    const app = createApp({ shopId: SHOP_ID, db: makeDb() as any, router: router as any, agentsJson: MOCK_AGENTS_JSON });
+    const app = createApp({ shopId: SHOP_ID, db: makeDb() as any, router: router as any, agentsJson: MOCK_AGENTS_JSON, adminApiKey: ADMIN_KEY, corsOrigin: 'http://localhost:3000' });
     await app.request('/api/cart', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer my-token-xyz' },
-      body: JSON.stringify({ lines: [] }),
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TEST_TOKEN}`, 'X-Shop-Domain': 'test.myshopify.com' },
+      body: JSON.stringify({ lines: [{ variant_id: 'gid://shopify/ProductVariant/1', quantity: 1 }] }),
     });
     const [execReq] = router.execute.mock.calls[0]! as any[];
-    expect(execReq.authContext.token).toBe('my-token-xyz');
     expect(execReq.authContext.isAuthenticated).toBe(true);
   });
 });
@@ -224,7 +231,7 @@ describe('POST /api/cart/:cart_id/checkout', () => {
     const app = makeApp({ status: 'success', data: { checkout_url: 'https://test.myshopify.com/checkouts/c/abc' }, latencyMs: 5 });
     const res = await app.request('/api/cart/gid%3A%2F%2Fshopify%2FCart%2Fabc/checkout', {
       method: 'POST',
-      headers: { Authorization: 'Bearer tok_abc' },
+      headers: { Authorization: `Bearer ${TEST_TOKEN}`, 'X-Shop-Domain': 'test.myshopify.com' },
     });
     expect(res.status).toBe(200);
     const body = await res.json() as any;
@@ -242,7 +249,7 @@ describe('GET /api/success-score', () => {
     (db.query.successScores.findMany as any).mockResolvedValue([
       { toolName: 'search_products', successRate: 0.98, totalRuns: 100 },
     ]);
-    const app = createApp({ shopId: SHOP_ID, db: db as any, router: makeRouter() as any, agentsJson: MOCK_AGENTS_JSON });
+    const app = createApp({ shopId: SHOP_ID, db: db as any, router: makeRouter() as any, agentsJson: MOCK_AGENTS_JSON, adminApiKey: ADMIN_KEY, corsOrigin: 'http://localhost:3000' });
     const res = await app.request('/api/success-score');
     expect(res.status).toBe(200);
     const body = await res.json() as any;

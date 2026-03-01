@@ -30,7 +30,7 @@ export async function createMCPServer(config: {
     { capabilities: { tools: {} } },
   );
 
-  registerTools(server, agentsJson, shopId, router);
+  registerTools(server, agentsJson, shopId, router, db);
 
   return server;
 }

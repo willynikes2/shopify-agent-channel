@@ -22,6 +22,7 @@ export const shops = pgTable('shops', {
   plan: text('plan').notNull().default('starter'),
   agentHostname: text('agent_hostname').unique(),
   agentEnabled: boolean('agent_enabled').default(true),
+  agentApiKeyHash: text('agent_api_key_hash'),  // SHA-256 hash of agent API key
   installedAt: timestamp('installed_at').defaultNow(),
   uninstalledAt: timestamp('uninstalled_at'),
   lastSyncedAt: timestamp('last_synced_at'),
